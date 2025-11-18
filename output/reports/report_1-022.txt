@@ -1,0 +1,6 @@
+File: 1-022.jpg
+Suspicious area ratio: 32.7%
+Density class: C – Heterogeneously dense
+Suspicion index (0–100): 21.6
+Region (centroid-based): upper-inner quadrant
+Disclaimer: Automatic analysis for research only.

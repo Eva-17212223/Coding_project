@@ -1,0 +1,16 @@
+## Automated Analysis for 1-136.jpg
+
+**Quantitative Results:**
+
+- **Suspicious area ratio:** 80.0%
+- **Density class:** D – Extremely dense
+- **Region:** lower-inner quadrant
+- **Suspicion index (0–100):** 100.0 (High suspicion)
+
+**Interpretation:** A significant suspicious area is detected in the lower-inner quadrant of the extremely dense breast tissue.
+
+**Recommendations:**
+
+- Targeted ultrasound is recommended for further evaluation of the detected area.
+- Radiologist review and confirmation are required before reporting.
+- A follow-up appointment should be scheduled for targeted ultrasound examination.

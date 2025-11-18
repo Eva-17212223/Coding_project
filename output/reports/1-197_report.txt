@@ -1,0 +1,15 @@
+## Automated Analysis for 1-197.jpg
+
+**Quantitative Results:**
+
+- **Suspicious area ratio:** 22.7%
+- **Density class:** C – Heterogeneously dense
+- **Region:** upper-outer quadrant
+- **Suspicion index (0–100):** 52.7 (Moderate suspicion)
+
+**Interpretation:** A moderately suspicious area is detected in the upper-outer quadrant of the heterogeneously dense breast tissue.
+
+**Recommendations:**
+
+- Consider short-term follow-up or ultrasound for further evaluation.
+- Radiologist confirmation required before reporting.
