@@ -1,0 +1,14 @@
+dataset/
+*.jpg
+*.jpeg
+*.png
+*.csv
+*.zip
+
+venv/
+*.csv
+*.xlsx
+*.zip
+*.h5
+*.pt
+
