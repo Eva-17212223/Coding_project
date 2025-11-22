@@ -1,6 +1,0 @@
-File: 1-267.jpg
-Suspicious area ratio: 71.2%
-Density class: D – Extremely dense
-Suspicion index (0–100): 44.5
-Region (centroid-based): lower-outer quadrant
-Disclaimer: Automatic analysis for research only.

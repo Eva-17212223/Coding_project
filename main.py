@@ -2,6 +2,7 @@
 """
 Main CLI entry point for the Mammography AI Assistant.
 Provides a Rich-styled interactive console and integrates a PyQt image viewer.
+Handles severe-case email notifications through Gmail API.
 """
 
 import sys
@@ -15,10 +16,11 @@ from rich.text import Text
 
 from agent import Agent
 from memory import load_memory, save_memory, get_memory_size_kb
-from config import MEMORY_THRESHOLD_KB, ANNOTATED_DIR
+from config import MEMORY_THRESHOLD_KB, ANNOTATED_DIR, SENDER_EMAIL
+from gmail_service import send_email
 
 # -------------------------------------------------------------
-# ASCII Art - Branding
+# ASCII Art Branding
 # -------------------------------------------------------------
 ASCII_AIVANCITY = """
 
@@ -41,7 +43,8 @@ ASCII_AGENT = """
  ░░░░░░░░  ░░░░░███ ░░░░░░  ░░░░ ░░░░░    ░░░░░  
            ███ ░███                              
           ░░██████                               
-           ░░░░░░                                """
+           ░░░░░░                                
+"""
 
 # -------------------------------------------------------------
 # Initialize Rich console
@@ -57,10 +60,9 @@ console = Console(theme=Theme({
 }))
 
 # -------------------------------------------------------------
-# Helper functions
+# Banner / Help / Stats
 # -------------------------------------------------------------
 def print_banner():
-    """Displays the ASCII banners."""
     console.print(
         Panel(
             Text(ASCII_AIVANCITY.strip("\n") + "\n" + ASCII_AGENT.strip("\n"), justify="center"),
@@ -68,9 +70,7 @@ def print_banner():
         )
     )
 
-
 def print_help():
-    """Displays available commands."""
     help_text = """
 **Available commands:**
 • /help           - Show this help message
@@ -83,21 +83,18 @@ Just type your message to interact with the AI!
 """
     console.print(Panel(help_text.strip(), title="[bold user]Help[/bold user]", border_style="user"))
 
-
 def print_stats(messages):
-    """Displays memory usage statistics."""
     size_kb = get_memory_size_kb(messages)
     percentage = (size_kb / MEMORY_THRESHOLD_KB) * 100
     stats_text = Markdown(f"""
 - **Message Count:** {len(messages)} messages
 - **Memory Size:** {size_kb:.2f} KB / {MEMORY_THRESHOLD_KB} KB ({percentage:.1f}%)
-- **Status:** {'[warning]⚠️ Approaching threshold[/warning]' if size_kb > MEMORY_THRESHOLD_KB * 0.8 else '[success]✓ Healthy[/success]'}
+- **Status:** {"[warning]⚠️ Approaching threshold[/warning]" if size_kb > MEMORY_THRESHOLD_KB * 0.8 else "[success]✓ Healthy[/success]"}
 """)
     console.print(Panel(stats_text, title="[bold user]Memory Statistics[/bold user]", border_style="user"))
 
-
 # -------------------------------------------------------------
-# PyQt Viewer Integration
+# PyQt Image Viewer
 # -------------------------------------------------------------
 def show_latest_annotated():
     """Displays the latest annotated image in a PyQt6 window."""
@@ -116,37 +113,32 @@ def show_latest_annotated():
 
         latest = annotated_files[-1]
         console.print(f"[dim]Opening {latest.name} in viewer...[/dim]")
-        
-        # Try detached viewer first (most reliable)
+
         success = show_image_detached(latest)
         
         if success:
-            console.print("[success]✅ Viewer launched in separate process![/success]")
-            console.print("[dim]Close the viewer window when done.[/dim]")
+            console.print("[success]Viewer launched in separate process![/success]")
         else:
-            console.print("[warning]⚠️  Could not launch detached viewer. Trying main thread...[/warning]")
-            success = show_image_simple(latest)
-            
-            if success:
-                console.print("[success]✅ Image displayed successfully![/success]")
+            console.print("[warning]Trying main thread viewer...[/warning]")
+            if show_image_simple(latest):
+                console.print("[success]Image displayed successfully![/success]")
             else:
-                console.print("[error]❌ Failed to display image[/error]")
+                console.print("[error]Failed to display image[/error]")
 
-    except ImportError:
-        console.print("[error]❌ PyQt6 not available. Install with: pip install PyQt6[/error]")
     except Exception as e:
-        console.print(f"[error]❌ Could not display image: {e}[/error]")
+        console.print(f"[error]Viewer error: {e}[/error]")
 
 # -------------------------------------------------------------
-# Main CLI Loop
+# MAIN LOOP
 # -------------------------------------------------------------
 def main():
-    """Main CLI loop for the Mammography AI Assistant."""
     print_banner()
     console.print("[dim]Type /help for commands, /exit to quit[/dim]\n", justify="center")
 
     agent = Agent(console)
     messages = load_memory()
+    awaiting_email_consent = False  # local flag
+
     if messages:
         console.print(f"[dim]✓ Loaded {len(messages)} messages from previous session[/dim]\n")
 
@@ -156,7 +148,9 @@ def main():
             if not user_input:
                 continue
 
-            # --- Slash Commands ---
+            # -----------------------------------------------------
+            # Slash commands
+            # -----------------------------------------------------
             if user_input.startswith("/"):
                 cmd = user_input.lower()
 
@@ -188,12 +182,59 @@ def main():
                     console.print(f"[warning]Unknown command:[/warning] {user_input}")
                     continue
 
-            # --- Normal conversation ---
+            # -----------------------------------------------------
+            # Handle YES/NO for severe-case email notification
+            # -----------------------------------------------------
+            if awaiting_email_consent:
+                lowered = user_input.lower()
+
+                if lowered in ["oui", "yes", "ok", "send", "envoie"]:
+                    console.print("[assistant]📩 Sending patient notification...[/assistant]")
+                    
+                    success = send_email(
+                        to_email="patient@example.com",   # TODO: replace with real patient email
+                        subject="Urgent Follow-Up Required",
+                        message_text=(
+                            "Bonjour,\n\n"
+                            "Suite à votre dernier examen mammographique, "
+                            "le radiologue recommande un rendez-vous de suivi.\n"
+                            "Merci de contacter votre centre au plus vite.\n\n"
+                            "Cordialement,\n"
+                            "Centre de Radiologie"
+                        )
+                    )
+
+                    if success:
+                        console.print("[success]✅ Email sent successfully![/success]")
+                    else:
+                        console.print("[error]❌ Failed to send email.[/error]")
+
+                    awaiting_email_consent = False
+                    continue
+
+                elif lowered in ["non", "no", "stop"]:
+                    console.print("[assistant]D’accord, aucune notification ne sera envoyée.[/assistant]")
+                    awaiting_email_consent = False
+                    continue
+
+                else:
+                    console.print("[warning]Please answer YES or NO.[/warning]")
+                    continue
+
+            # -----------------------------------------------------
+            # Normal conversation
+            # -----------------------------------------------------
             console.print(Panel(user_input, title="[bold user]👤 You[/bold user]", border_style="user"))
             messages, response = agent.process_message(messages, user_input)
+
+            # If agent triggers notification
+            if "Souhaites-tu que je contacte le patient" in response:
+                awaiting_email_consent = True
+
             md = Markdown(response)
             console.print(Panel(md, title="[bold assistant]🤖 Assistant[/bold assistant]", border_style="assistant"))
             console.print()
+
             save_memory(messages)
 
         except (KeyboardInterrupt, EOFError):
@@ -201,7 +242,6 @@ def main():
             save_memory(messages)
             console.print("[success]Goodbye! 👋[/success]")
             break
-
 
 # -------------------------------------------------------------
 # Entry point

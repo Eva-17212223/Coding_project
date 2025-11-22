@@ -1,3 +1,16 @@
+# --- Python cache ---
+__pycache__/
+*.pyc
+
+# --- Environnements virtuels ---
+venv/
+.env/
+*.env
+
+# --- Fichiers sensibles ---
+client_secret_*.json
+
+# --- Datasets / images ---
 dataset/
 *.jpg
 *.jpeg
@@ -5,10 +18,17 @@ dataset/
 *.csv
 *.zip
 
-venv/
-*.csv
+# --- Fichiers data / modèles ---
 *.xlsx
-*.zip
 *.h5
 *.pt
 
+# --- Dossiers input/output générés ---
+input/
+output/
+
+# --- JSON générés ---
+memory.json
+
+# --- OS files ---
+.DS_Store

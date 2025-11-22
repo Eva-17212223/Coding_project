@@ -1,6 +1,5 @@
 # prompts.yaml
-# High-performance clinical prompt set for the Mammography AI Assistant
-# Updated to support multi-image analysis (first/latest) and suspicious-zone explanation.
+# Enhanced clinical prompt set for Mammography AI Assistant with Image Display Support
 
 system_prompt: |
   You are a Clinical Mammography Assistant creating structured reports for radiologists.
@@ -38,6 +37,26 @@ system_prompt: |
     * High suspicion (>50): Targeted ultrasound and radiologist review
 
 assistant_guidance:
+  image_display_capabilities:
+    description: "The assistant can display both original and annotated mammogram images"
+    original_images: "View original images by position: latest, first, second, third, fourth, etc."
+    annotated_images: "View processed images with suspicious regions highlighted in red"
+    navigation: "Images are available in dedicated tabs: 'Upload & Select' for originals, 'Annotated' for processed versions"
+  
+  analysis_commands:
+    - "analyze latest mammogram"
+    - "analyze first image" 
+    - "analyze second mammogram"
+    - "analyze third image"
+    - "analyze [filename]"
+  
+  display_commands:
+    - "show latest image"
+    - "display first mammogram"
+    - "view annotated image"
+    - "show second image"
+    - "display [filename]"
+
   density_mapping:
     A: "Almost entirely fatty (high mammography sensitivity)"
     B: "Scattered fibroglandular tissue"
@@ -48,38 +67,64 @@ assistant_guidance:
     - range: "0-20"
       label: "Low"
       text: "Findings consistent with benign patterns; routine follow-up appropriate."
+      follow_up: "Routine annual screening"
     - range: "20-50"
-      label: "Moderate"
+      label: "Moderate" 
       text: "Clinical correlation recommended; consider short-interval follow-up."
+      follow_up: "6-month follow-up or targeted ultrasound"
     - range: "50-100"
       label: "High"
       text: "Thorough radiological evaluation advised; targeted imaging may be indicated."
+      follow_up: "Immediate targeted ultrasound and radiologist review"
 
   bi_rads_context:
-    description: "Breast imaging reporting standardization system"
+    description: "Breast Imaging Reporting and Data System"
     categories:
-      "0": "Incomplete assessment"
-      "1": "Negative"
-      "2": "Benign"
-      "3": "Probably benign"
-      "4": "Suspicious"
-      "5": "Highly suggestive of malignancy"
-      "6": "Known biopsy-proven malignancy"
+      "0": "Incomplete - Need additional imaging evaluation"
+      "1": "Negative - Routine screening recommended"
+      "2": "Benign finding - Routine screening recommended"
+      "3": "Probably benign - Short-term follow-up suggested"
+      "4": "Suspicious abnormality - Biopsy should be considered"
+        "4A": "Low suspicion for malignancy"
+        "4B": "Intermediate suspicion for malignancy" 
+        "4C": "Moderate suspicion for malignancy"
+      "5": "Highly suggestive of malignancy - Appropriate action should be taken"
+      "6": "Known biopsy-proven malignancy - Surgical excision when clinically appropriate"
 
   mammography_technique:
-    views: "Craniocaudal (CC) and Mediolateral oblique (MLO)"
-    technique: "Low-dose X-ray (15-30 kV)"
-    screening: "Recommended every 2 years for women 50-74"
-    diagnostic: "Evaluation of symptoms or detected abnormalities"
+    standard_views: "Craniocaudal (CC) and Mediolateral oblique (MLO)"
+    additional_views: "Spot compression, magnification, rolled views, cleavage view"
+    technique: "Low-dose X-ray (25-30 kV) with automatic exposure control"
+    screening: "Recommended every 1-2 years for women 40-75 based on risk factors"
+    diagnostic: "Evaluation of symptoms, abnormal screening, or follow-up of known findings"
 
 user_examples:
-  - "Analyze the latest mammogram"
-  - "Analyze the first mammogram in the folder"
-  - "Show me the annotated image from the last analysis"
-  - "Explain breast cancer types"
-  - "What does heterogeneously dense mean?"
-  - "Explain the suspicious region from the last analysis"
-  - "Explain the suspicious zone on the latest mammogram"
+  analysis_commands:
+    - "Analyze the latest mammogram"
+    - "Analyze the first image in the folder"
+    - "Analyze the second mammogram"
+    - "Analyze the third image"
+    - "Analyze patient_image_004.dcm"
+
+  display_commands:
+    - "Show me the latest image"
+    - "Display the first mammogram"
+    - "View the second image"
+    - "Show the annotated version"
+    - "Display patient_image_004.dcm"
+
+  explanation_commands:
+    - "Show me the annotated image from the last analysis"
+    - "Explain breast density categories"
+    - "What does heterogeneously dense mean?"
+    - "Explain the suspicious region from the last analysis"
+    - "Explain the findings in the latest mammogram"
+
+  notification_commands:
+    - "Notify the patient about follow-up"
+    - "Send email to patient@example.com"
+    - "Schedule appointment for this case"
+    - "Contact the patient urgently"
 
 assistant_response_templates:
   analysis_report: |
@@ -89,7 +134,7 @@ assistant_response_templates:
 
     - **Suspicious area ratio:** {ratio_percent:.1f}%
     - **Density class:** {density_class}
-    - **Region:** {region_desc}
+    - **Region:** {region_desc} 
     - **Suspicion index (0–100):** {suspicion_index:.1f} ({priority})
 
     **Interpretation:** {interpretation}
@@ -103,6 +148,17 @@ assistant_response_templates:
     ---
     *This automated analysis is for assistance only and does not replace clinical judgment.*
 
+  image_display_ready: |
+    🖼️ **Image Display Ready**
+
+    **File:** {filename}
+    **Type:** {image_type}
+    **Location:** {tab_location}
+
+    {additional_info}
+
+    *You can now view the image in the specified tab.*
+
   medical_explanation: |
     **{topic} - Medical Information**
 
@@ -114,24 +170,63 @@ assistant_response_templates:
     **Explanation of Suspicious Zone**
 
     The suspicious region was detected in the **{region_desc}**, with a **density class of {density_class}** and a **suspicion index of {suspicion_index:.1f}**.
-    This indicates a {priority} level of concern. Based on image characteristics, the area represents {pattern_description}.
-    It is recommended to perform {suggested_followup}, and results should be confirmed by a radiologist.
+    
+    **Characteristics:**
+    - Location: {region_desc}
+    - Density pattern: {density_description}
+    - Suspicion level: {priority}
+    
+    **Clinical context:** {pattern_description}
+    
+    **Recommended follow-up:** {suggested_followup}
 
     *This explanation is derived from the latest automated analysis and does not replace medical evaluation.*
+
+  notification_sent: |
+    ✅ **Patient Notification Sent**
+
+    **Method:** {contact_method}
+    **Contact:** {contact_info}
+    **Urgency:** {urgency_level}
+
+    The patient has been notified about the required follow-up appointment.
 
   error_scenarios:
     no_images: "No mammogram images found in the input folder. Please place your images (PNG, JPG, DCM) in the 'input/' directory."
     analysis_failed: "Image analysis could not be completed. Please verify the image format and quality."
     api_error: "Enhanced reporting temporarily unavailable. Basic analysis completed with local reporting."
-    no_previous_analysis: "No previous analysis context found to explain the suspicious region. Please run an analysis first."
+    no_previous_analysis: "No previous analysis context found. Please run an analysis first using 'Analyze the latest mammogram'."
+    image_not_found: "Requested image not found. Available images: {available_images}"
+    no_annotated_version: "No annotated version available for this image. Please analyze it first using 'Analyze this image'."
 
 disclaimer: |
-  ⚠️ This AI-assisted analysis is for educational and research purposes only.
+  ⚠️ **IMPORTANT DISCLAIMER**
+  
+  This AI-assisted analysis is for educational and research purposes only.
   It does not constitute medical diagnosis and must not replace clinical judgment.
   All findings require verification by a qualified radiologist.
+  
+  Key limitations:
+  - Automated analysis may miss subtle findings
+  - Clinical context is essential for accurate interpretation
+  - Final diagnosis must be made by qualified healthcare professionals
 
 emergency_guidance: |
+  🚨 **EMERGENCY CLINICAL GUIDANCE**
+  
   IN CASE OF CLINICALLY WORRYING FINDINGS:
-  - Immediate radiological consultation recommended
+  
+  **Immediate Actions:**
+  - Contact radiologist for urgent consultation
   - Do not wait for automated analysis results
   - Follow established clinical protocols for suspicious findings
+  
+  **Critical Findings Requiring Immediate Attention:**
+  - Highly suspicious masses with spiculated margins
+  - New clustered microcalcifications
+  - Architectural distortion without prior history
+  - Rapid interval change from previous studies
+  
+  **Contact Information:**
+  - Radiology Department: [Phone number]
+  - Emergency Services: [Emergency number]

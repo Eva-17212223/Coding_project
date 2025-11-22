@@ -6,8 +6,10 @@ Extended analysis pipeline for the Mammography AI Assistant.
 - Supports 'first' or 'latest' image selection.
 - Stores context of the latest analysis for explanatory follow-up (e.g. suspicious zone explanation).
 
-Returns (to agent.py):
-    ratio_percent (float), region_desc (str), annotated_file (Path), report_path (Path)
+Returns:
+    Full structured dictionary including:
+        ratio_percent, region_desc, density_class, suspicion_index,
+        annotated_path, report_path, severe_case
 """
 
 from pathlib import Path
@@ -33,7 +35,6 @@ from config import (
 )
 from tools import load_image_any, annotated_path, save_report, ensure_dir
 
-
 # Keep global memory of the last analysis for explanations
 _last_analysis = {
     "file": None,
@@ -47,7 +48,7 @@ _last_analysis = {
 
 
 # -------------------------------------------------------------
-# 1) PREPROCESS (same as before)
+# 1) PREPROCESS
 # -------------------------------------------------------------
 def preprocess(img_bgr: np.ndarray) -> np.ndarray:
     resized = cv2.resize(img_bgr, TARGET_SIZE, interpolation=cv2.INTER_AREA)
@@ -63,7 +64,7 @@ def preprocess(img_bgr: np.ndarray) -> np.ndarray:
 
 
 # -------------------------------------------------------------
-# 2) SEGMENT (same as before)
+# 2) SEGMENT
 # -------------------------------------------------------------
 def segment_suspicious(gray: np.ndarray) -> np.ndarray:
     if THRESH_STRATEGY == "adaptive":
@@ -149,6 +150,7 @@ def centroid_and_quadrant(mask: np.ndarray) -> tuple[str, tuple[int, int]]:
 def annotate_image(original_bgr: np.ndarray, work_mask: np.ndarray,
                    ratio_percent: float, region_desc: str,
                    dens_class: str, susp_idx: float) -> np.ndarray:
+
     mask_resized = cv2.resize(work_mask, (original_bgr.shape[1], original_bgr.shape[0]),
                               interpolation=cv2.INTER_NEAREST)
 
@@ -184,9 +186,21 @@ def annotate_image(original_bgr: np.ndarray, work_mask: np.ndarray,
 
 
 # -------------------------------------------------------------
-# 5) SINGLE IMAGE ANALYSIS (base function)
+# SEVERITY CLASSIFICATION (AJOUT IMPORTANT)
 # -------------------------------------------------------------
-def analyze_image(image_path: Path):
+def classify_severity(suspicion_index: float, ratio_percent: float) -> bool:
+    """
+    A case is considered severe if:
+    - suspicion_index >= 60 (high suspicion)
+    - OR suspicious area ratio >= 50%
+    """
+    return (suspicion_index >= 60) or (ratio_percent >= 50)
+
+
+# -------------------------------------------------------------
+# 5) SINGLE IMAGE ANALYSIS
+# -------------------------------------------------------------
+def analyze_image(image_path: Path) -> dict:
     bgr = load_image_any(str(image_path))
     gray = preprocess(bgr)
     mask = segment_suspicious(gray)
@@ -197,7 +211,9 @@ def analyze_image(image_path: Path):
     susp_idx = suspicion_index(mask_main, ratio)
     region_desc, _ = centroid_and_quadrant(mask_main if np.count_nonzero(mask_main) else mask)
 
-    annotated_img = annotate_image(bgr, mask_main, ratio, region_desc, dens_class, susp_idx)
+    annotated_img = annotate_image(
+        bgr, mask_main, ratio, region_desc, dens_class, susp_idx
+    )
     out_img_path = annotated_path(image_path)
     ensure_dir(ANNOTATED_DIR)
     cv2.imwrite(str(out_img_path), annotated_img)
@@ -208,12 +224,13 @@ def analyze_image(image_path: Path):
         f"Suspicious area ratio: {ratio:.1f}%\n"
         f"Density class: {dens_class}\n"
         f"Suspicion index (0–100): {susp_idx:.1f}\n"
-        f"Region (centroid-based): {region_desc}\n"
-        f"Disclaimer: Automatic analysis for research only.\n"
+        f"Region: {region_desc}\n"
+        f"Disclaimer: Automatic analysis.\n"
     )
     out_report_path = save_report(Path(image_path).name, tech_report)
 
-    # Save context
+    severe = classify_severity(susp_idx, ratio)
+
     global _last_analysis
     _last_analysis.update({
         "file": str(image_path),
@@ -223,9 +240,19 @@ def analyze_image(image_path: Path):
         "suspicion_index": susp_idx,
         "annotation_path": str(out_img_path),
         "report_path": str(out_report_path),
+        "severe_case": severe,
     })
 
-    return ratio, region_desc, out_img_path, Path(out_report_path)
+    return {
+        "filename": Path(image_path).name,
+        "ratio": ratio,
+        "region": region_desc,
+        "density_class": dens_class,
+        "suspicion_index": susp_idx,
+        "annotated_path": str(out_img_path),
+        "report_path": str(out_report_path),
+        "severe_case": severe,
+    }
 
 
 # -------------------------------------------------------------
@@ -265,29 +292,29 @@ def explain_suspicious_zone():
     dens = _last_analysis["density"]
     idx = _last_analysis["suspicion_index"]
 
-    # Simple interpretive explanation
     if idx < 20:
-        severity = "low suspicion — likely benign tissue pattern."
+        severity = "low suspicion — likely benign."
     elif idx < 50:
-        severity = "moderate suspicion — area merits follow-up imaging."
+        severity = "moderate suspicion — follow-up advised."
     else:
         severity = "high suspicion — further diagnostic evaluation recommended."
 
     return (
-        f"The suspicious region lies in the {region}, with a density class of {dens}. "
-        f"The computed suspicion index is {idx:.1f}, indicating {severity}"
+        f"The suspicious region is in the {region}, with density class {dens}. "
+        f"The suspicion index is {idx:.1f}, indicating {severity}"
     )
 
 
+# -------------------------------------------------------------
+# 8) STREAMLIT WRAPPER
+# -------------------------------------------------------------
 def analyze_file(image_path: str) -> dict:
-    """Wrapper used by the Streamlit app to analyze one file and return structured info."""
-    ratio, region, annotated_path, report_path = analyze_image(Path(image_path))
+    result = analyze_image(Path(image_path))
 
-    # Calcul de la densité et de l’indice de suspicion pour affichage
-    dens_class = density_class_from_ratio(ratio)
-    susp_idx = suspicion_index(cv2.imread(str(annotated_path), cv2.IMREAD_GRAYSCALE), ratio)
+    dens_class = result["density_class"]
+    susp_idx = result["suspicion_index"]
+    ratio = result["ratio"]
 
-    # Déterminer la priorité en fonction de l’indice de suspicion
     if susp_idx < 20:
         priority = "Low"
     elif susp_idx < 50:
@@ -296,6 +323,7 @@ def analyze_file(image_path: str) -> dict:
         priority = "High"
 
     interpretation = explain_suspicious_zone()
+
     recommendations = [
         "Follow up with a radiologist.",
         "Compare with previous mammograms.",
@@ -303,25 +331,26 @@ def analyze_file(image_path: str) -> dict:
     ]
 
     return {
-        "filename": Path(image_path).name,
+        "filename": result["filename"],
         "suspicious_ratio": ratio,
         "density_class": dens_class,
-        "region": region,
+        "region": result["region"],
         "suspicion_index": susp_idx,
         "priority": priority,
         "interpretation": interpretation,
         "recommendations": recommendations,
+        "annotated_path": result["annotated_path"],
+        "report_path": result["report_path"],
+        "severe_case": result["severe_case"],
     }
 
+
 # -------------------------------------------------------------
-# 8) CLI TEST
+# 9) CLI TEST
 # -------------------------------------------------------------
 if __name__ == "__main__":
     import sys
     mode = sys.argv[1] if len(sys.argv) > 1 else "latest"
-    r, reg, img_out, rep = analyze_images(mode=mode)
+    res = analyze_images(mode=mode)
     print("Analysis completed for", mode)
-    print("→ Ratio:", r, "| Region:", reg)
-    print("→ Annotated:", img_out)
-    print("→ Report:", rep)
-    print("Explanation:", explain_suspicious_zone())
+    print(res)
